@@ -8,10 +8,11 @@ typedef struct {
     int x, y;
 } Coord;
 
-typedef struct {
+typedef struct ValueAir{
     Coord value1;
     int routeCost;
-} valueAir;
+    struct ValueAir* next;
+} ValueAir;
 
 typedef struct Entry {
     Coord key;
@@ -25,7 +26,7 @@ typedef struct {
 
 typedef struct EntryAiroute {
     Coord key;
-    valueAir value[5];
+    ValueAir *value;
     struct EntryAiroute* next;
 } EntryAiroute;
 
@@ -70,29 +71,50 @@ HashMapAiroute* create2(int matrixSize) {
     return map;
 }
 
-void insertRoute(HashMapAiroute* map, Coord key, Coord value, int value2, int matrixSize) {
+char insertRoute(HashMapAiroute* map, Coord key, Coord value, int value2, int matrixSize) { //Va modificata per ritorno valori messaggio
+    int i=0;
     unsigned int index = hashing(key, matrixSize/2);
     EntryAiroute* entry = map->bucketsAir[index];
     while (entry != NULL) {
         if (checkKey(entry->key, key)) {
-            for (int i = 0; i < 5; i++) {
-                if (checkKey(entry->value[i].value1, value)) {
-                    entry->value[i].routeCost = value2;
-                    return;
+            ValueAir *entryCopy = entry->value;
+            ValueAir *temp = NULL;
+            while (entryCopy != NULL) {
+                if (checkKey(entryCopy->value1, value)) {
+                    if (temp == NULL) {
+                        entry->value = entryCopy->next;
+                        free(entryCopy);
+                        return "OK";
+                    }
+                    temp->next = entryCopy->next;
+                    free(entryCopy);
+                    return "OK";
                 }
-                //cosa ci sara dentro entry value?
+                temp = entryCopy;
+                entryCopy = entryCopy->next;
+                i++;
             }
+            if (i<5) {
+                ValueAir *newEntry = malloc(sizeof(ValueAir));
+                newEntry->value1 = value;
+                newEntry->routeCost = value2;
+                newEntry->next = entry->value;
+                entry->value = newEntry;
+                return "OK";
+            }
+            return "KO";
         }
         entry = entry->next;
     }
     entry = malloc(sizeof(EntryAiroute));
     entry->key = key;
-    for (int i = 0; i < 5; i++) {
-        entry->value[i].value1 = value;
-        entry->value[i].routeCost = value2;
-    }
+    entry->value = malloc(sizeof(ValueAir));
+    entry->value->value1 = value;
+    entry->value->routeCost = value2;
+    entry->value->next = NULL;
     entry->next = map->bucketsAir[index];
     map->bucketsAir[index] = entry;
+    return "OK";
 }
 
 void modifyCoord(HashMapPosition* map, Coord key, int value, int matrixSize) {
@@ -190,6 +212,7 @@ int main(int argc, const char *argv[]) {
         int found = 0;
         Coord key = {1, 1};
         int value = getPair(map, key, &found, x * y);
+
         printf("%d\n", value);
     }
     deletePos(map, precX * precY);

@@ -44,7 +44,7 @@ int checkKey(Coord a, Coord b) {
     return (a.x == b.x) && (a.y == b.y);
 }
 
-HashMapPosition* create(int matrixSize, int raw) {
+HashMapPosition* init(int matrixSize, int raw) {
     int j = 0, k = 0;
     HashMapPosition* map = malloc(sizeof(HashMapPosition));
     map->buckets = calloc(matrixSize, sizeof(Entry*));
@@ -71,24 +71,26 @@ HashMapAiroute* create2(int matrixSize) {
     return map;
 }
 
-char insertRoute(HashMapAiroute* map, Coord key, Coord value, int value2, int matrixSize) { //Va modificata per ritorno valori messaggio
+char toggle_air_route(HashMapAiroute* map, Coord key, Coord value, int value2, int matrixSize) {
     int i=0;
     unsigned int index = hashing(key, matrixSize/2);
     EntryAiroute* entry = map->bucketsAir[index];
     while (entry != NULL) {
         if (checkKey(entry->key, key)) {
             ValueAir *entryCopy = entry->value;
-            ValueAir *temp = NULL;
+            ValueAir *temp = NULL;                                  //VA SISTEMATA DEVI FARE CONTROLLO CHE LA CHIAVE O IL VALORE ESISTA NELLA TABELLA MADRE
             while (entryCopy != NULL) {
                 if (checkKey(entryCopy->value1, value)) {
                     if (temp == NULL) {
                         entry->value = entryCopy->next;
                         free(entryCopy);
-                        return "OK";
+                        char *message = "OK";
+                        return *message;
                     }
                     temp->next = entryCopy->next;
                     free(entryCopy);
-                    return "OK";
+                    char *message = "OK";
+                    return *message;
                 }
                 temp = entryCopy;
                 entryCopy = entryCopy->next;
@@ -100,9 +102,11 @@ char insertRoute(HashMapAiroute* map, Coord key, Coord value, int value2, int ma
                 newEntry->routeCost = value2;
                 newEntry->next = entry->value;
                 entry->value = newEntry;
-                return "OK";
+                char *message = "OK";
+                return *message;
             }
-            return "KO";
+            char *message = "KO";
+            return *message;
         }
         entry = entry->next;
     }
@@ -114,10 +118,11 @@ char insertRoute(HashMapAiroute* map, Coord key, Coord value, int value2, int ma
     entry->value->next = NULL;
     entry->next = map->bucketsAir[index];
     map->bucketsAir[index] = entry;
-    return "OK";
+    char *message = "OK";
+    return *message;
 }
 
-void modifyCoord(HashMapPosition* map, Coord key, int value, int matrixSize) {
+void modifyValue(HashMapPosition* map, Coord key, int value, int matrixSize) {
     unsigned int index = hashing(key, matrixSize);
     Entry* entry = map->buckets[index];
     while (entry != NULL) {
@@ -160,6 +165,12 @@ void deleteAiroute(HashMapAiroute* map, int matrixSize) {
     for (int i = 0; i < matrixSize/2; i++) {
         EntryAiroute* entry = map->bucketsAir[i];
         while (entry != NULL) {
+            ValueAir *entryCopy = entry->value;
+            while (entryCopy != NULL) {
+                ValueAir *temp = entryCopy;
+                entryCopy = entryCopy->next;
+                free(temp);
+            }
             EntryAiroute* next = entry->next;
             free(entry);
             entry = next;
@@ -170,36 +181,9 @@ void deleteAiroute(HashMapAiroute* map, int matrixSize) {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-HashMapPosition* init(int y, int x, HashMapPosition* map, int matrixSizeOld) {
-    int matrixSize = y * x;
-    if (map != NULL) {
-        deletePos(map, matrixSizeOld);
-    }
-    return create(matrixSize, x);
-}
-
-
-
-
-
-
-
-
-
-
 int main(int argc, const char *argv[]) {
     HashMapPosition* map = NULL;
+    HashMapAiroute* mapAiroute = NULL;
     int x, y, precX, precY;
     while (1) {
         precX = x;
@@ -208,13 +192,21 @@ int main(int argc, const char *argv[]) {
         if (x == -1 && y == -1) {
             break;
         }
-        map = init(y, x, map, precX * precY);
+        if (map != NULL) {
+            deletePos(map, precX * precY);
+            deleteAiroute(mapAiroute, precX * precY);
+        }
+        map = init(x * y, x);
+        mapAiroute = create2(x * y);
+        printf("%c\n", toggle_air_route(mapAiroute, (Coord){0, 1}, (Coord){1, 1}, 1, x * y));
+        printf("%c\n", toggle_air_route(mapAiroute, (Coord){0, 1}, (Coord){1, 0}, 2, x * y));
         int found = 0;
         Coord key = {1, 1};
         int value = getPair(map, key, &found, x * y);
-
         printf("%d\n", value);
+
     }
+    deleteAiroute(mapAiroute, precX * precY);
     deletePos(map, precX * precY);
     return 0;
 }

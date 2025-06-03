@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -196,17 +195,31 @@ void deleteAiroute(HashMapAiroute* map, int matrixSize) {
     free(map);
 }
 
+int distEsagoni(Coord a, Coord b) {
+    int dx = a.x - b.x;
+    int dy = a.y - b.y;
+    if (dx * dy >= 0) {
+        return abs(dx) + abs(dy);
+    }
+    if (abs(dx) > abs(dy)) {
+        return abs(dx);
+    }
+    return abs(dy);
+}
+
 int change_cost(Coord key, int value, int ray, int matrixSize, HashMapPosition* mapPosition, HashMapAiroute* mapAiroute) {
     if (ray > 10 || ray < -10)
         return 1;
     if (getPair(mapPosition, key, matrixSize) == 0.5f) {
         return 1;
     }
+    if (value > 10 || value < -10) {
+        return 1;
+    }
+
 
     return 0;
 }
-
-
 
 int main(int argc, const char *argv[]) {
     HashMapPosition* map = NULL;

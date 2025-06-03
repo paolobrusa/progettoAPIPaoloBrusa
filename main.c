@@ -44,6 +44,8 @@ int checkKey(Coord a, Coord b) {
     return (a.x == b.x) && (a.y == b.y);
 }
 
+float getPair(HashMapPosition* map, Coord key, int matrixSize);
+
 HashMapPosition* init(int matrixSize, int raw) {
     int j = 0, k = 0;
     HashMapPosition* map = malloc(sizeof(HashMapPosition));
@@ -66,19 +68,25 @@ HashMapPosition* init(int matrixSize, int raw) {
 }
 
 HashMapAiroute* create2(int matrixSize) {
+    int matrixSizeAir = matrixSize;
     HashMapAiroute* map = malloc(sizeof(HashMapAiroute));
-    map->bucketsAir = calloc(matrixSize/2, sizeof(EntryAiroute*));
+    if (matrixSize/2 == 1)
+        matrixSizeAir = 1;
+    map->bucketsAir = calloc(matrixSizeAir, sizeof(EntryAiroute*));
     return map;
 }
 
-char toggle_air_route(HashMapAiroute* map, Coord key, Coord value, int value2, int matrixSize) {
+char toggle_air_route(HashMapAiroute* map, Coord key, Coord value, int value2, int matrixSize, HashMapPosition* mapPosition) {
     int i=0;
-    unsigned int index = hashing(key, matrixSize/2);
+    int matrixSizeAir = matrixSize;
+    if (matrixSize/2 == 1)
+        matrixSizeAir = 1;
+    unsigned int index = hashing(key, matrixSizeAir);
     EntryAiroute* entry = map->bucketsAir[index];
     while (entry != NULL) {
         if (checkKey(entry->key, key)) {
             ValueAir *entryCopy = entry->value;
-            ValueAir *temp = NULL;                                  //VA SISTEMATA DEVI FARE CONTROLLO CHE LA CHIAVE O IL VALORE ESISTA NELLA TABELLA MADRE
+            ValueAir *temp = NULL;                                  //MANCA FUNZIONE PER CALCOLARE IL COSTO DELLA ROTTA AEREA (VALUE2)
             while (entryCopy != NULL) {
                 if (checkKey(entryCopy->value1, value)) {
                     if (temp == NULL) {
@@ -96,7 +104,7 @@ char toggle_air_route(HashMapAiroute* map, Coord key, Coord value, int value2, i
                 entryCopy = entryCopy->next;
                 i++;
             }
-            if (i<5) {
+            if (i<5 && getPair(mapPosition, key, matrixSize) != 0.5f && getPair(mapPosition, value, matrixSize) != 0.5f) {
                 ValueAir *newEntry = malloc(sizeof(ValueAir));
                 newEntry->value1 = value;
                 newEntry->routeCost = value2;
@@ -109,6 +117,10 @@ char toggle_air_route(HashMapAiroute* map, Coord key, Coord value, int value2, i
             return *message;
         }
         entry = entry->next;
+    }
+    if (getPair(mapPosition, key, matrixSize) == 0.5f || getPair(mapPosition, value, matrixSize) == 0.5f) {
+        char *message = "KO";
+        return *message;
     }
     entry = malloc(sizeof(EntryAiroute));
     entry->key = key;
@@ -134,18 +146,19 @@ void modifyValue(HashMapPosition* map, Coord key, int value, int matrixSize) {
     }
 }
 
-int getPair(HashMapPosition* map, Coord key, int* found, int matrixSize) {
+float getPair(HashMapPosition* map, Coord key, int matrixSize) {
+    if (key.x<0 || key.y<0 || key.x>=matrixSize || key.y>=matrixSize) {
+        return 0.5f;
+    }
     unsigned int index = hashing(key, matrixSize);
     Entry* entry = map->buckets[index];
     while (entry != NULL) {
-        if (checkKey(entry->key, key)) {
-            *found = 1;                                                      //RICONTROLLA QUI
+        if (checkKey(entry->key, key)) {//RICONTROLLA QUI
             return entry->value;
         }
         entry = entry->next;
     }
-    *found = 0;
-    return 0;
+    return 0.5f;
 }
 
 void deletePos(HashMapPosition* map, int matrixSize) {
@@ -162,7 +175,10 @@ void deletePos(HashMapPosition* map, int matrixSize) {
 }
 
 void deleteAiroute(HashMapAiroute* map, int matrixSize) {
-    for (int i = 0; i < matrixSize/2; i++) {
+    int matrixSizeAir = matrixSize;
+    if (matrixSize/2 == 1)
+        matrixSizeAir = 1;
+    for (int i = 0; i < matrixSizeAir; i++) {
         EntryAiroute* entry = map->bucketsAir[i];
         while (entry != NULL) {
             ValueAir *entryCopy = entry->value;
@@ -179,6 +195,17 @@ void deleteAiroute(HashMapAiroute* map, int matrixSize) {
     free(map->bucketsAir);
     free(map);
 }
+
+int change_cost(Coord key, int value, int ray, int matrixSize, HashMapPosition* mapPosition, HashMapAiroute* mapAiroute) {
+    if (ray > 10 || ray < -10)
+        return 1;
+    if (getPair(mapPosition, key, matrixSize) == 0.5f) {
+        return 1;
+    }
+
+    return 0;
+}
+
 
 
 int main(int argc, const char *argv[]) {
@@ -198,12 +225,8 @@ int main(int argc, const char *argv[]) {
         }
         map = init(x * y, x);
         mapAiroute = create2(x * y);
-        printf("%c\n", toggle_air_route(mapAiroute, (Coord){0, 1}, (Coord){1, 1}, 1, x * y));
-        printf("%c\n", toggle_air_route(mapAiroute, (Coord){0, 1}, (Coord){1, 0}, 2, x * y));
-        int found = 0;
-        Coord key = {1, 1};
-        int value = getPair(map, key, &found, x * y);
-        printf("%d\n", value);
+        printf("%c\n", toggle_air_route(mapAiroute, (Coord){0, 1}, (Coord){5, 5}, 1, x * y, map));
+        printf("%c\n", toggle_air_route(mapAiroute, (Coord){0, 1}, (Coord){1, 1}, 2, x * y, map));
 
     }
     deleteAiroute(mapAiroute, precX * precY);

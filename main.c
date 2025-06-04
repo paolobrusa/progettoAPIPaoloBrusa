@@ -138,7 +138,13 @@ void modifyValue(HashMapPosition* map, Coord key, int value, int matrixSize) {
     Entry* entry = map->buckets[index];
     while (entry != NULL) {
         if (checkKey(entry->key, key)) {
-            entry->value = value;
+            entry->value += value;
+            if (entry->value < 0) {
+                entry->value = 0;
+            }
+            if (entry->value > 100) {
+                entry->value = 100;
+            }
             return;
         }
         entry = entry->next;
@@ -208,6 +214,7 @@ int distEsagoni(Coord a, Coord b) {
 }
 
 int change_cost(Coord key, int value, int ray, int matrixSize, HashMapPosition* mapPosition, HashMapAiroute* mapAiroute) {
+    int dcost = 0;
     if (ray > 10 || ray < -10)
         return 1;
     if (getPair(mapPosition, key, matrixSize) == 0.5f) {
@@ -216,7 +223,21 @@ int change_cost(Coord key, int value, int ray, int matrixSize, HashMapPosition* 
     if (value > 10 || value < -10) {
         return 1;
     }
-
+    for (int i = key.x-ray; i < ray+key.x; i++) {
+        for (int j = key.y-ray; j < ray+key.y; j++) {   //VA ANCORA TESTATO PER CAPIRE SE VA (A LOGICA SI MA CON LA LOGICA VAI CONTRO IL MURO)
+            if (i < 0 || j < 0) {
+                return 1;
+            }
+            dcost = (ray - distEsagoni(key, (Coord){i,j}))/ray;  //MANCA MODIFICA COSTO ROTTA AEREA
+            if (dcost < 0) {
+                dcost = 0;
+            }
+            dcost = ray * dcost;
+            if (getPair(mapPosition, (Coord){i,j}, matrixSize) == 0.5f) {
+                modifyValue(mapPosition, (Coord){i,j}, dcost, matrixSize);
+            }
+        }
+    }
 
     return 0;
 }

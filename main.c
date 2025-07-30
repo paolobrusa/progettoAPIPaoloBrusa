@@ -81,8 +81,12 @@ int checkKeyDouble(DoubleCoord a, DoubleCoord b) {
 
 float getPair(HashMapPosition* map, Coord key, int matrixSize);
 
+int col = 0, row = 0;
+
 HashMapPosition* init(int matrixSize, int raw) {
     int j = 0, k = 0;
+    col = raw;
+    row = matrixSize / raw;
     HashMapPosition* map = malloc(sizeof(HashMapPosition));
     map->buckets = calloc(matrixSize, sizeof(Entry*));
     for (int i = 0; i < matrixSize; i++) {
@@ -236,7 +240,7 @@ void modifyValue(HashMapPosition* map, Coord key, int value, int matrixSize) {
 }
 
 float getPair(HashMapPosition* map, Coord key, int matrixSize) {
-    if (key.x<0 || key.y<0 || key.x>=matrixSize || key.y>=matrixSize) {
+    if (key.x<0 || key.y<0 || key.x>=col || key.y>=row) {
         return 0.5f;
     }
     unsigned int index = hashing(key, matrixSize);
@@ -512,7 +516,7 @@ int travel_cost(Coord start, Coord dest, HashMapPosition* mapPosition, HashMapAi
 }
 
 
-int main(int argc, const char *argv[]) {
+int main(int argc, const char *argv[]) { //verifica bounds in getpair
     char command[255];
     HashMapPosition* map = NULL;
     HashMapAiroute* mapAiroute = NULL;
@@ -520,7 +524,10 @@ int main(int argc, const char *argv[]) {
     int precX = 0, precY = 0, x = 0, y = 0, v = 0, ray = 0, initial = 0;
     while (!feof(stdin)) {
         if (scanf("%s", command)!=1) {
-
+            deletePos(map, precX * precY);
+            deleteAiroute(mapAiroute, precX * precY);
+            deleteCache(mapCache, precX * precY);
+            return 0;
         }
         if (strcmp(command, "init") == 0) {
             if (initial == 1) {
@@ -529,77 +536,81 @@ int main(int argc, const char *argv[]) {
                 deleteCache(mapCache, precX * precY);
                 initial = 0;
             }
-            if(scanf("%s", precY) != 0) {
+            if(scanf("%d", &precX) != 1) {
                 continue;
             }
-            if (scanf("%s", precX) != 0) {
+            if (scanf("%d", &precY) != 1) {
                 continue;
             }
             printf("OK\n");
+            initial = 1;
             map = init(precY*precX, precX);
             mapAiroute = create2(precX * precY);
             mapCache = createCache(precX * precY);
         }
         else if (strcmp(command, "change_cost") == 0) {
-            if(scanf("%s", x) != 0) {
+            if(scanf("%d", &x) != 1) {
                 continue;
             }
-            if (scanf("%s", y) != 0) {
+            if (scanf("%d", &y) != 1) {
                 continue;
             }
-            if(scanf("%s", v) != 0) {
+            if(scanf("%d", &v) != 1) {
                 continue;
             }
-            if (scanf("%s", ray) != 0) {
+            if (scanf("%d", &ray) != 1) {
                 continue;
             }
             if (change_cost((Coord){x,y}, v, ray, precX * precY, map, mapAiroute) == 0) {
                 printf("OK\n");
                 deleteCache(mapCache, precX * precY);
+                mapCache = createCache(precX * precY);
             }
             else {
                 printf("KO\n");
             }
         }
         else if (strcmp(command, "toggle_air_route") == 0) {
-            if(scanf("%s", x) != 0) {
+            if(scanf("%d", &x) != 1) {
                 continue;
             }
-            if (scanf("%s", y) != 0) {
+            if (scanf("%d", &y) != 1) {
                 continue;
             }
-            if (scanf("%s", v) != 0) {
+            if (scanf("%d", &v) != 1) {
                 continue;
             }
-            if (scanf("%s", ray) != 0) {
+            if (scanf("%d", &ray) != 1) {
                 continue;
             }
             if (toggle_air_route(mapAiroute, (Coord){x,y}, (Coord){v,ray}, precX * precY, map) == 0) {
                 printf("OK\n");
+                deleteCache(mapCache, precX * precY);
+                mapCache = createCache(precX * precY);
             }
             else {
                 printf("KO\n");
-                deleteCache(mapCache, precX * precY);
             }
         }
         else if (strcmp(command, "travel_cost") == 0) {
-            if (scanf("%s", x) != 0) {
+            if (scanf("%d", &x) != 1) {
                 continue;
             }
-            if (scanf("%s", y) != 0) {
+            if (scanf("%d", &y) != 1) {
                 continue;
             }
-            if (scanf("%s", v) != 0) {
+            if (scanf("%d", &v) != 1) {
                 continue;
             }
-            if (scanf("%s", ray) != 0) {
+            if (scanf("%d", &ray) != 1) {
                 continue;
             }
-            int res = travel_cost(Coord{x,y}, Coord{v,ray}, map, mapAiroute, mapCache, precX * precY);
+            int res = travel_cost((Coord){x, y}, (Coord){v, ray}, map, mapAiroute, mapCache, precX * precY);
             printf("%d\n", res);
         }
     }
-    deleteAiroute(mapAiroute, precX * precY);
     deletePos(map, precX * precY);
+    deleteAiroute(mapAiroute, precX * precY);
+    deleteCache(mapCache, precX * precY);
     return 0;
 }

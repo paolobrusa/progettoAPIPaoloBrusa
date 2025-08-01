@@ -267,24 +267,20 @@ void deleteCache(HashMapCache* cache, int matrixSize) {
 
 int distEsagoni(Coord a, Coord b) {
     int q1, r1, q2, r2;
-
-    if (a.y % 2 == 0) {  // riga pari
+    if (a.y % 2 == 1) {  // riga dispari (shifted right)
+        q1 = a.x - (a.y - 1) / 2;
+    } else {  // riga pari
         q1 = a.x - a.y / 2;
-    } else {  // riga dispari
-        q1 = a.x - (a.y + 1) / 2;
     }
     r1 = a.y;
-
-    if (b.y % 2 == 0) {  // riga pari
+    if (b.y % 2 == 1) {  // riga dispari (shifted right)
+        q2 = b.x - (b.y - 1) / 2;
+    } else {  // riga pari
         q2 = b.x - b.y / 2;
-    } else {  // riga dispari
-        q2 = b.x - (b.y + 1) / 2;
     }
     r2 = b.y;
-
     int s1 = -q1 - r1;
     int s2 = -q2 - r2;
-
     return (abs(q1 - q2) + abs(r1 - r2) + abs(s1 - s2)) / 2;
 }
 

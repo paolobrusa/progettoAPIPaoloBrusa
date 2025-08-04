@@ -305,26 +305,15 @@ void modifyAirRoutesCost(HashMapAiroute* mapAiroute, Coord key, int costChange, 
         matrixSizeAir = 1;
     unsigned int index = hashing(key, matrixSizeAir);
     EntryAiroute* entry = mapAiroute->bucketsAir[index];
-    ValueAir* temp = NULL;
     while (entry != NULL) {
         if (checkKey(entry->key, key)) {
             ValueAir* currentRoute = entry->value;
             while (currentRoute != NULL) {
                 currentRoute->routeCost += costChange;
                 if (currentRoute->routeCost < 0) {
-                    ValueAir* toDelete = currentRoute;
-                    if (temp == NULL) {
-                        entry->value = currentRoute->next;
-                        currentRoute = currentRoute->next;
-                    } else {
-                        temp->next = currentRoute->next;
-                        currentRoute = currentRoute->next;
-                    }
-                    free(toDelete);
-                } else {
-                    temp = currentRoute;
-                    currentRoute = currentRoute->next;
+                    currentRoute->routeCost = 0;
                 }
+                currentRoute = currentRoute->next;
             }
             return;
         }
@@ -367,23 +356,44 @@ int change_cost(Coord key, int value, int ray, int matrixSize, HashMapPosition* 
     return 0;
 }
 
-int getHexNear(Coord pos, HashMapPosition* mapPosition, Coord* hexNearVect, int* costs, Coord dest) {
+typedef struct Tp{
+    Coord pos;
+    Coord dest;
+    int cost;
+    int routeCost;
+} Tp;
+
+int getHexNear(Coord pos, HashMapPosition* mapPosition, Coord* hexNearVect, int* costs, Coord dest, Tp* tp, int tpcount) {
+    //printf("DEBUG getHexNear chiamata con pos=(%d,%d)\n", pos.x, pos.y);
     int count = 0;
-    float posCost = getPair(mapPosition, pos);
-    if (posCost == 0.5f || posCost==0) return 0;
+    float pc = getPair(mapPosition, pos);
+    if (pc == 0.5f || pc==0) return 0;
+    int posCost = (int)pc;
 
-    Coord offsetEven[6] = {{+1,0}, {0,-1}, {-1, -1}, {-1,0}, {-1,+1}, {0, +1}};
-    Coord offsetOdd[6] = {{+1,0}, {+1,-1}, {0, -1}, {-1,0}, {0,+1}, {+1, +1}};
+    static Coord offsetEven[6] = {{+1,0}, {0,-1}, {-1, -1}, {-1,0}, {-1,+1}, {0, +1}};
+    static Coord offsetOdd[6] = {{+1,0}, {+1,-1}, {0, -1}, {-1,0}, {0,+1}, {+1, +1}};
 
-    Coord* offset = (pos.y % 2 == 0) ? offsetEven : offsetOdd;
+    const Coord* offset = (pos.y % 2 == 0) ? offsetEven : offsetOdd;
 
     for (int i = 0; i < 6; i++) {
         Coord hexNear = {pos.x + offset[i].x, pos.y + offset[i].y};
         float neighborCost = getPair(mapPosition, hexNear);
         if (neighborCost != 0.5f && (neighborCost > 0 || (hexNear.x == dest.x && hexNear.y == dest.y) )) {
             hexNearVect[count] = hexNear;
-            costs[count] = (int)posCost;
+            costs[count] = posCost;
             count++;
+        }
+    }
+
+    if (tp != NULL && tpcount > 0) {
+        for (int t = 0; t < tpcount; t++) {
+            //printf("DEBUG: Teletrasporto %d: da (%d,%d) a (%d,%d)\n",t, tp[t].pos.x, tp[t].pos.y, tp[t].dest.x, tp[t].dest.y);
+            if (checkKey(pos, tp[t].pos)) {
+                //printf("DEBUG: TELETRASPORTO ATTIVATO Da (%d,%d) a (%d,%d) con costo %d\n",pos.x, pos.y, tp[t].dest.x, tp[t].dest.y, tp[t].routeCost);
+                hexNearVect[count] = tp[t].dest;
+                costs[count] = tp[t].routeCost;
+                count++;
+            }
         }
     }
     return count;
@@ -407,6 +417,7 @@ BucketQueue* createBucketQueue() {
 
 void bucketPush(BucketQueue* queue, Node* node) {
     int cost = node->fCost;
+    //printf("DEBUG bucketPush: aggiungendo (%d,%d) con fCost=%d\n", node->pos.x, node->pos.y, cost);
     if (cost >= 100000) cost = 100000 - 1;
     node->next = queue->buckets[cost];
     queue->buckets[cost] = node;
@@ -425,6 +436,7 @@ Node* bucketPop(BucketQueue* queue) {
         return NULL;
     }
     Node* node = queue->buckets[queue->minCost];
+    //printf("DEBUG bucketPop: estraendo (%d,%d) con fCost=%d\n", node->pos.x, node->pos.y, node->fCost);
     queue->buckets[queue->minCost] = node->next;
     node->next = NULL;
     queue->size--;
@@ -530,7 +542,54 @@ void hashSetAdd(HashSet* set, Coord key) {
     set->buckets[index] = entry;
 }
 
-int astar(Coord start, Coord dest, HashMapPosition* mapPosition, HashMapAiroute* mapAiroute, int matrixSize, HashSet* visitedNodes) {
+int heuristicFun(Coord start, Coord dest, Tp* tp, int tpcount) {
+    int distance = distEsagoni(start, dest);
+
+    if (tp != NULL && tpcount > 0) {
+        int bestCost = distance;
+
+        // Controlla tutti i teleport possibili
+        for (int t = 0; t < tpcount; t++) {
+            int distToTp = distEsagoni(start, tp[t].pos);
+            int distFromTpToDest = distEsagoni(tp[t].dest, dest);
+
+            // Costo totale: raggiungere il teleport + usare il teleport + raggiungere destinazione
+            int totalCost = distToTp + 1 + distFromTpToDest; // +1 per il costo del teleport
+
+            if (totalCost < bestCost) {
+                bestCost = totalCost;
+            }
+        }
+
+        // Controlla anche catene di teleport (max 2 hop)
+        for (int t1 = 0; t1 < tpcount; t1++) {
+            int distToTp1 = distEsagoni(start, tp[t1].pos);
+
+            // Se il primo teleport è ragionevolmente vicino
+            if (distToTp1 <= distance / 2) {
+                for (int t2 = 0; t2 < tpcount; t2++) {
+                    if (t1 != t2) {
+                        int distBetweenTps = distEsagoni(tp[t1].dest, tp[t2].pos);
+                        int distToFinalDest = distEsagoni(tp[t2].dest, dest);
+
+                        // Costo catena: reach tp1 + use tp1 + reach tp2 + use tp2 + reach dest
+                        int chainCost = distToTp1 + 1 + distBetweenTps + 1 + distToFinalDest;
+
+                        if (chainCost < bestCost) {
+                            bestCost = chainCost;
+                        }
+                    }
+                }
+            }
+        }
+
+        distance = bestCost;
+    }
+
+    return distance;
+}
+
+int astar(Coord start, Coord dest, HashMapPosition* mapPosition, HashMapAiroute* mapAiroute, int matrixSize, HashSet* visitedNodes, Tp* tp, int tpcount) {
     //printf("DEBUG A*: Inizio da (%d,%d) a (%d,%d)\n", start.x, start.y, dest.x, dest.y);
     if (getPair(mapPosition, start) == 0.5f ||
         getPair(mapPosition, dest) == 0.5f) {
@@ -544,7 +603,7 @@ int astar(Coord start, Coord dest, HashMapPosition* mapPosition, HashMapAiroute*
     Node* startNode = malloc(sizeof(Node));
     startNode->pos = start;
     startNode->gCost = 0;
-    startNode->hCost = distEsagoni(start, dest);
+    startNode->hCost = heuristicFun(start, dest, tp, tpcount);
     startNode->fCost = startNode->gCost + startNode->hCost;
     startNode->prec = NULL;
     startNode->next = NULL;
@@ -556,6 +615,7 @@ int astar(Coord start, Coord dest, HashMapPosition* mapPosition, HashMapAiroute*
     while (queue->size > 0) {
         Node* current = bucketPop(queue);
         if (current == NULL) break;
+        //printf("DEBUG A*: processando nodo (%d,%d) con gCost=%d\n", current->pos.x, current->pos.y, current->gCost);
         if (checkKey(current->pos, dest)) {
             int totCost = current->gCost;
             free(current);
@@ -574,7 +634,7 @@ int astar(Coord start, Coord dest, HashMapPosition* mapPosition, HashMapAiroute*
         hashSetAdd(visitedNodes, current->pos);
         Coord hexNearVect[11];
         int costs[11];
-        int hexNearCount = getHexNear(current->pos, mapPosition, hexNearVect, costs, dest);
+        int hexNearCount = getHexNear(current->pos, mapPosition, hexNearVect, costs, dest, tp, tpcount);
         for (int i = 0; i < hexNearCount; i++) {
             Coord hexPos = hexNearVect[i];
             int cost = costs[i];
@@ -587,15 +647,14 @@ int astar(Coord start, Coord dest, HashMapPosition* mapPosition, HashMapAiroute*
                 continue;
             }
             saveCache(gCosts, neighborCoord, tentativeGCost, matrixSize/4);
-            Node* neighborNode = malloc(sizeof(Node));
-            int distance = distEsagoni(hexPos, dest);
-            neighborNode->pos = hexPos;
-            neighborNode->gCost = tentativeGCost;
-            neighborNode->hCost = distance;
-            neighborNode->fCost = tentativeGCost + distance;
-            neighborNode->prec = current;
-            neighborNode->next = NULL;
-            bucketPush(queue, neighborNode);
+            Node* near = malloc(sizeof(Node));
+            near->pos = hexPos;
+            near->gCost = tentativeGCost;
+            near->hCost = heuristicFun(hexPos, dest, tp, tpcount);
+            near->fCost = tentativeGCost + near->hCost;
+            near->prec = current;
+            near->next = NULL;
+            bucketPush(queue, near);
         }
         free(current);
     }
@@ -606,34 +665,45 @@ int astar(Coord start, Coord dest, HashMapPosition* mapPosition, HashMapAiroute*
     return -1;
 }
 
-int airRouteCost(Coord start, Coord dest, HashMapPosition* mapPos, HashMapAiroute* mapAiroute, int matrixSize, HashSet* visitedNodes) {
+Tp* airRouteTp(Coord dest, HashMapAiroute* mapAiroute, HashMapPosition* mapPosition, int matrixSize, int* tpcount) {
+    *tpcount = 0;
+    Tp* tp = malloc(100 * sizeof(Tp));
     int matrixSizeAir = matrixSize;
     if (matrixSize/2 == 1) matrixSizeAir = 1;
-    int bestCost = -1;
+
+    int maxDistance = 1000;
 
     for (int i = 0; i < matrixSizeAir; i++) {
         EntryAiroute* entry = mapAiroute->bucketsAir[i];
-
         while (entry != NULL) {
             ValueAir* currentRoute = entry->value;
             while (currentRoute != NULL) {
-                int a = astar(start, entry->key, mapPos, mapAiroute, matrixSize, visitedNodes);
-                if (a != -1) {
-                    int b = astar(currentRoute->value1, dest, mapPos, mapAiroute, matrixSize, visitedNodes);
-                    if (b != -1) {
-                        int totalCost = a + currentRoute->routeCost + b;
-                        if (bestCost == -1 || totalCost < bestCost) {
-                            bestCost = totalCost;
-                        }
+                int distToDest = distEsagoni(currentRoute->value1, dest);
+
+                if (distToDest <= maxDistance) {
+                    int directDistance = distEsagoni(entry->key, dest);
+
+                    if (currentRoute->routeCost + distToDest <= directDistance + 10) {
+                        tp[*tpcount].pos = entry->key;
+                        tp[*tpcount].dest = currentRoute->value1;
+                        tp[*tpcount].cost = (int)getPair(mapPosition, entry->key);
+                        tp[*tpcount].routeCost = currentRoute->routeCost;
+                        (*tpcount)++;
+                       // printf("DEBUG: Teletrasporto candidato da (%d,%d) a (%d,%d) costo=%d, dist_finale=%d\n",entry->key.x, entry->key.y, currentRoute->value1.x, currentRoute->value1.y, currentRoute->routeCost, distToDest);
+                        if (*tpcount >= 100) break;
                     }
                 }
                 currentRoute = currentRoute->next;
             }
+            if (*tpcount >= 100) break;
             entry = entry->next;
         }
+        if (*tpcount >= 100) break;
     }
-    return bestCost;
+    //printf("DEBUG: Trovati %d teletrasporti candidati\n", *tpcount);
+    return tp;
 }
+
 
 int travel_cost(Coord start, Coord dest, HashMapPosition* mapPosition, HashMapAiroute* mapAiroute, HashMapCache* cache, int matrixSize, HashSet* visitedNodes, HashSet* dup) {
     DoubleCoord coord = {start.x, start.y, dest.x, dest.y};
@@ -641,29 +711,17 @@ int travel_cost(Coord start, Coord dest, HashMapPosition* mapPosition, HashMapAi
     if (c != -2) {
         return c;
     }
-    int b = airRouteCost(start, dest, mapPosition, mapAiroute, matrixSize, visitedNodes);
-    int a = astar(start, dest, mapPosition, mapAiroute, matrixSize, visitedNodes);
-    if (a >= 0 && b >= 0 && a < b) {
+    int tpcount = 0;
+    Tp* tp = NULL;
+    tp = airRouteTp(dest, mapAiroute ,mapPosition, matrixSize, &tpcount);
+    int a = astar(start, dest, mapPosition, mapAiroute, matrixSize, visitedNodes, tp, tpcount);
+    if (a != -1) {
         saveCache(cache, coord, a, matrixSize);
-        return a;
     }
-    if (a >= 0 && b >= 0 && a > b) {
-        saveCache(cache, coord, b, matrixSize);
-        return b;
+    if (tp != NULL) {
+        free(tp);
     }
-    if (a >= 0 && b >= 0 && a == b) {
-        saveCache(cache, coord, a, matrixSize);
-        return a;
-    }
-    if (a >= 0 && b < 0) {
-        saveCache(cache, coord, a, matrixSize);
-        return a;
-    }
-    if (a < 0 && b >= 0) {
-        saveCache(cache, coord, b, matrixSize);
-        return b;
-    }
-    return -1;
+    return a;
 }
 
 
@@ -709,11 +767,6 @@ int main(int argc, const char *argv[]) {
             createPool(precX * precY);
         }
         else if (strcmp(command, "change_cost") == 0) {
-            if (initial != 1 || map == NULL || mapAiroute == NULL || mapCache == NULL) {
-                if (scanf("%d %d %d %d", &x, &y, &v, &ray) != 1) continue;
-                printf("KO\n");
-                continue;
-            }
             if(scanf("%d", &x) != 1) {
                 continue;
             }
@@ -726,6 +779,10 @@ int main(int argc, const char *argv[]) {
             if (scanf("%d", &ray) != 1) {
                 continue;
             }
+            if (initial != 1 || map == NULL || mapAiroute == NULL || mapCache == NULL) {
+                printf("KO\n");
+                continue;
+            }
             if (change_cost((Coord){x,y}, v, ray, precX * precY, map, mapAiroute) == 0) {
                 printf("OK\n");
                 deleteCache(mapCache, precX * precY);
@@ -736,11 +793,6 @@ int main(int argc, const char *argv[]) {
             }
         }
         else if (strcmp(command, "toggle_air_route") == 0) {
-            if (initial != 1 || map == NULL || mapAiroute == NULL || mapCache == NULL) {
-                if (scanf("%d %d %d %d", &x, &y, &v, &ray) != 1) continue;
-                printf("KO\n");
-                continue;
-            }
             if(scanf("%d", &x) != 1) {
                 continue;
             }
@@ -753,6 +805,10 @@ int main(int argc, const char *argv[]) {
             if (scanf("%d", &ray) != 1) {
                 continue;
             }
+            if (initial != 1 || map == NULL || mapAiroute == NULL || mapCache == NULL) {
+                printf("KO\n");
+                continue;
+            }
             if (toggle_air_route(mapAiroute, (Coord){x,y}, (Coord){v,ray}, precX * precY, map) == 0) {
                 printf("OK\n");
                 deleteCache(mapCache, precX * precY);
@@ -763,11 +819,6 @@ int main(int argc, const char *argv[]) {
             }
         }
         else if (strcmp(command, "travel_cost") == 0) {
-            if (initial != 1 || map == NULL || mapAiroute == NULL || mapCache == NULL) {
-                if (scanf("%d %d %d %d", &x, &y, &v, &ray) != 1) continue;
-                printf("-1\n");
-                continue;
-            }
             if (scanf("%d", &x) != 1) {
                 continue;
             }
@@ -780,6 +831,10 @@ int main(int argc, const char *argv[]) {
             if (scanf("%d", &ray) != 1) {
                 continue;
             }
+            if (initial != 1 || map == NULL || mapAiroute == NULL || mapCache == NULL) {
+                printf("-1\n");
+                continue;
+            }
             int res = travel_cost((Coord){x, y}, (Coord){v, ray}, map, mapAiroute, mapCache, precX * precY, visitedNodes, dup);
             printf("%d\n", res);
         }
@@ -788,6 +843,7 @@ int main(int argc, const char *argv[]) {
     deleteAiroute(mapAiroute, precX * precY);
     deleteCache(mapCache, precX * precY);
     deleteHashSet(visitedNodes);
+    deleteHashSet(dup);
     deletePool();
     return 0;
 }

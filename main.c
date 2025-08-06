@@ -42,16 +42,18 @@ typedef struct {
     EntryDouble** bucketsDouble;
 } HashMapCache;
 
-typedef struct Node {
-    Coord pos;
-    int gCost;
-    int hCost;
-    int fCost;
-    struct Node* prec;
-    struct Node* next;
-} Node;
+typedef struct {
+    int dist;
+    int prev;
+    int visited;
+} Vert;
 
-//Funzione hash
+typedef struct {
+    int *data;
+    int *p;
+    int len;
+} Heap;
+
 unsigned int hashing(Coord coord, int matrixSize) {
     unsigned int hash = coord.x * 31 + coord.y;
     return hash % matrixSize;
@@ -73,10 +75,10 @@ int checkKeyDouble(DoubleCoord a, DoubleCoord b) {
 float getPair(HashMapPosition* map, Coord key);
 
 HashMapPosition* init(int raw, int columns) {
+    int matrixSize = columns * raw;
     HashMapPosition* map = malloc(sizeof(HashMapPosition));
     map->key = (Coord){raw, columns};
-    map->value = malloc(columns * raw * sizeof(int));
-    int matrixSize = columns * raw;
+    map->value = malloc(matrixSize * sizeof(int));
     for (int i = 0; i < matrixSize; i++) {
         map->value[i] = 1;
     }
@@ -144,7 +146,7 @@ int toggle_air_route(HashMapAiroute* map, Coord key, Coord value, int matrixSize
     while (entry != NULL) {
         if (checkKey(entry->key, key)) {
             ValueAir *entryCopy = entry->value;
-            ValueAir *temp = NULL;                                  //VA TESTATO FUNZIONAMENTO CALCULATEROUTECOST
+            ValueAir *temp = NULL;
             while (entryCopy != NULL) {
                 if (checkKey(entryCopy->value1, value)) {
                     if (temp == NULL) {
@@ -273,27 +275,23 @@ typedef struct {
     int s;
 } Cube;
 
-Cube coordCube(Coord a) {
-    int q = a.x - (a.y - (a.y & 1)) / 2;
-    int r = a.y;
-    int s = -q - r;
-    return (Cube){q, r, s};
-}
-// Function to create a new Cube
-Cube createCube(int q, int r, int s) {
+static Cube newCube(Cube a, Cube b) {
     Cube cube;
-    cube.q = q;
-    cube.r = r;
-    cube.s = s;
+    cube.q = a.q - b.q;
+    cube.r = a.r - b.r;
+    cube.s = a.s - b.s;
     return cube;
 }
 
-Cube newCube(Cube a, Cube b) {
-    return createCube(a.q - b.q, a.r - b.r, a.s - b.s);
-}
-
 int distEsagoni(Coord a, Coord b) {
-    Cube cube = newCube(coordCube(a), coordCube(b));
+    int q, r, s, q1, r1, s1;
+    q = a.x - (a.y - (a.y & 1)) / 2;
+    r = a.y;
+    s = -q - r;
+    q1 = b.x - (b.y - (b.y & 1)) / 2;
+    r1 = b.y;
+    s1 = -q1 - r1;
+    Cube cube = newCube((Cube){q,r,s}, (Cube){q1,r1,s1});
     int aq = abs(cube.q), ar = abs(cube.r), as = abs(cube.s);
     int max = (aq > ar) ? ((aq > as) ? aq : as) : ((ar > as) ? ar : as);
     return max;
@@ -356,90 +354,58 @@ int change_cost(Coord key, int value, int ray, int matrixSize, HashMapPosition* 
     return 0;
 }
 
-typedef struct {
-    int v;
-    int p;
-} edge;
-
-typedef struct {
-    edge **edges;
-    int len;
-    int size;
-    int dist;
-    int prev;
-    int visited;
-} Vert;
-
-typedef struct {
-    int *data;
-    int *prio;
-    int *index;
-    int len;
-    int size;
-} Heap;
-
 Heap *createHeap(int n) {
     Heap *h = calloc(1, sizeof(Heap));
     h->data = calloc(n + 1, sizeof(int));
-    h->prio = calloc(n + 1, sizeof(int));
-    h->index = calloc(n, sizeof(int));
-    h->size = n;
+    h->p = calloc(n + 1, sizeof(int));
     return h;
 }
 
 void push(Heap *h, int v, int p) {
-    int i = h->index[v] == 0 ? ++h->len : h->index[v];
+    h->len++;
+    int i = h->len;
     int j = i >> 1;
-
-    while (i > 1 && h->prio[j] > p) {
+    while (i > 1 && h->p[j] > p) {
         h->data[i] = h->data[j];
-        h->prio[i] = h->prio[j];
-        h->index[h->data[i]] = i;
+        h->p[i] = h->p[j];
         i = j;
-        j = j >> 1;
+        j = i >> 1;
     }
     h->data[i] = v;
-    h->prio[i] = p;
-    h->index[v] = i;
-}
-
-static int minHeap(Heap *h, int i, int j, int k) {
-    int m = i;
-    if (j <= h->len && h->prio[j] < h->prio[m])
-        m = j;
-    if (k <= h->len && h->prio[k] < h->prio[m])
-        m = k;
-    return m;
+    h->p[i] = p;
 }
 
 int pop(Heap *h) {
     int v = h->data[1];
+    int len = h->len;
+    int lenp = h->p[len];
     int i = 1;
 
     while (1) {
         int left = i << 1;
         int right = left + 1;
-        int j = minHeap(h, h->len, left, right);
-        if (j == h->len) break;
+        int j = len;
+
+        if (left <= len && h->p[left] < lenp)
+            j = left;
+        if (right <= len && h->p[right] < lenp)
+            j = right;
+        if (j == len) break;
 
         h->data[i] = h->data[j];
-        h->prio[i] = h->prio[j];
-        h->index[h->data[i]] = i;
+        h->p[i] = h->p[j];
         i = j;
     }
 
-    h->data[i] = h->data[h->len];
-    h->prio[i] = h->prio[h->len];
-    h->index[h->data[i]] = i;
+    h->data[i] = h->data[len];
+    h->p[i] = lenp;
     h->len--;
-    h->index[v] = 0;
     return v;
 }
 
 void destroy(Heap *h) {
     free(h->data);
-    free(h->prio);
-    free(h->index);
+    free(h->p);
     free(h);
 }
 
@@ -451,7 +417,7 @@ static Coord convCoord(int index, int cols) {
     return (Coord){index / cols, index % cols};
 }
 
-static int hexNear(Coord pos, int neighbors[6], int rows, int cols) {
+static int hexNear(Coord pos, int hexNear[6], int rows, int cols) {
     static const int offsetEven[6][2] = {{1,0}, {0,-1}, {-1,-1}, {-1,0}, {-1,1}, {0,1}};
     static const int offsetOdd[6][2] = {{1,0}, {1,-1}, {0,-1}, {-1,0}, {0,1}, {1,1}};
 
@@ -459,24 +425,21 @@ static int hexNear(Coord pos, int neighbors[6], int rows, int cols) {
     int count = 0;
 
     for (int i = 0; i < 6; i++) {
-        int nx = pos.x + offset[i][0];
-        int ny = pos.y + offset[i][1];
+        int x = pos.x + offset[i][0];
+        int y = pos.y + offset[i][1];
 
-        if (nx >= 0 && nx < rows && ny >= 0 && ny < cols) {
-            neighbors[count++] = nx * cols + ny;
+        if (x >= 0 && x < rows && y >= 0 && y < cols) {
+            hexNear[count++] = x * cols + y;
         }
     }
     return count;
 }
 
-ValueAir* getAirRoutes(HashMapAiroute* mapAiroute, Coord pos, int matrixSize) {
+static ValueAir* getAirRoutes(HashMapAiroute* mapAiroute, Coord pos, int matrixSize) {
     int matrixSizeAir = matrixSize;
-    if (matrixSize/2 == 1)
-        matrixSizeAir = 1;
-
+    if (matrixSize/2 == 1) matrixSizeAir = 1;
     unsigned int index = hashing(pos, matrixSizeAir);
     EntryAiroute* entry = mapAiroute->bucketsAir[index];
-
     while (entry != NULL) {
         if (checkKey(entry->key, pos)) {
             return entry->value;
@@ -487,8 +450,11 @@ ValueAir* getAirRoutes(HashMapAiroute* mapAiroute, Coord pos, int matrixSize) {
 }
 
 int travel_cost(Coord start, Coord end, HashMapPosition* mapPosition,HashMapAiroute* mapAiroute, HashMapCache* mapCache, int matrixSize) {
-    if (start.x < 0 || start.x >= mapPosition->key.x || start.y < 0 || start.y >= mapPosition->key.y ||
-        end.x < 0 || end.x >= mapPosition->key.x || end.y < 0 || end.y >= mapPosition->key.y) {
+    int rows = mapPosition->key.x;
+    int cols = mapPosition->key.y;
+
+    if (start.x < 0 || start.x >= rows || start.y < 0 || start.y >= cols ||
+        end.x < 0 || end.x >= rows || end.y < 0 || end.y >= cols) {
         return -1;
     }
 
@@ -502,10 +468,6 @@ int travel_cost(Coord start, Coord end, HashMapPosition* mapPosition,HashMapAiro
         return cachedResult;
     }
 
-    int rows = mapPosition->key.x;
-    int cols = mapPosition->key.y;
-    int totalNodes = rows * cols;
-
     int startIndex = convInd(start, cols);
     int endIndex = convInd(end, cols);
 
@@ -517,38 +479,35 @@ int travel_cost(Coord start, Coord end, HashMapPosition* mapPosition,HashMapAiro
     if (startCostFloat == 0.0f) {
         return -1;
     }
-    Vert *vert = calloc(totalNodes, sizeof(Vert));
+    Vert *vert = calloc(matrixSize, sizeof(Vert));
 
-    for (int i = 0; i < totalNodes; i++) {
+    for (int i = 0; i < matrixSize; i++) {
         vert[i].dist = INT_MAX;
         vert[i].visited = 0;
         vert[i].prev = -1;
     }
     vert[startIndex].dist = 0;
-    Heap *heap = createHeap(totalNodes);
+    Heap *heap = createHeap(matrixSize);
     push(heap, startIndex, 0);
 
     int result = -1;
+    //int distance = distEsagoni(start, end) * 4;
 
     while (heap->len > 0) {
         int index = pop(heap);
-        // if (index == endIndex) {
-        //     result = vertices[index].dist;
-        //     break;
-        // }
         if (vert[index].visited) continue;
         vert[index].visited = 1;
         Coord currentPos = convCoord(index, cols);
         if (currentPos.x == end.x && currentPos.y == end.y) {
             result = vert[index].dist;
-            //printf("sono qui\n");
             break;
         }
+        // if (vert[index].dist > distance) continue;
         float costExit = getPair(mapPosition, currentPos);
         if (costExit == 0.5f) continue;
         if (costExit == 0.0f) continue;
 
-        int currentExitCost = (int)costExit;
+        int cost = (int)costExit;
 
         int hexvec[6];
         int hexnear = hexNear(currentPos, hexvec, rows, cols);
@@ -556,10 +515,11 @@ int travel_cost(Coord start, Coord end, HashMapPosition* mapPosition,HashMapAiro
         for (int i = 0; i < hexnear; i++) {
             int hex = hexvec[i];
             if (vert[hex].visited) continue;
-            Coord neighborPos = convCoord(hex, cols);
-            float neighborCostFloat = getPair(mapPosition, neighborPos);
-            if (neighborCostFloat == 0.5f) continue;
-            int newDist = vert[index].dist + currentExitCost;
+            Coord hexPos = convCoord(hex, cols);
+            float hexCost = getPair(mapPosition, hexPos);
+            if (hexCost == 0.5f) continue;
+            int newDist = vert[index].dist + cost;
+            // if (newDist > distance) continue;
             if (newDist < vert[hex].dist) {
                 vert[hex].dist = newDist;
                 vert[hex].prev = index;

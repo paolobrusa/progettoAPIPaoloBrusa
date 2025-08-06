@@ -333,7 +333,7 @@ static int change_cost(Coord key, int value, int ray, HashMapPosition* mapPositi
     int miny = key.y-ray;
     int maxy = key.y+ray;
     for (int i = minx; i <= maxx; i++) {
-        for (int j = miny; j <= maxy; j++) {  //VA ANCORA TESTATO PER CAPIRE SE VA (A LOGICA SI MA CON LA LOGICA VAI CONTRO IL MURO)
+        for (int j = miny; j <= maxy; j++) {
             if (i < 0 || j < 0 || i >= mapPosition->key.x || j >= mapPosition->key.y) continue;
             int distance = distEsagoni(key, (Coord){i,j});
             //printf("esagono (%d,%d), distance=%d\n", i, j, distance);
@@ -407,31 +407,6 @@ static void destroy(Heap *h) {
     free(h);
 }
 
-static int convInd(Coord pos, int cols) {
-    return pos.x * cols + pos.y;
-}
-
-static Coord convCoord(int index, int cols) {
-    return (Coord){index / cols, index % cols};
-}
-
-static int hexNear(Coord pos, int hexNear[6], int rows, int cols) {
-    static const int offsetEven[6][2] = {{1,0}, {0,-1}, {-1,-1}, {-1,0}, {-1,1}, {0,1}};
-    static const int offsetOdd[6][2] = {{1,0}, {1,-1}, {0,-1}, {-1,0}, {0,1}, {1,1}};
-    const int (*offset)[2] = (pos.y & 1) ? offsetOdd : offsetEven;
-    int count = 0;
-
-    for (int i = 0; i < 6; i++) {
-        int x = pos.x + offset[i][0];
-        int y = pos.y + offset[i][1];
-
-        if (x >= 0 && x < rows && y >= 0 && y < cols) {
-            hexNear[count++] = x * cols + y;
-        }
-    }
-    return count;
-}
-
 static ValueAir* getAirRoutes(HashMapAiroute* mapAiroute, Coord pos, int matrixSizeAir2) {
     unsigned int index = hashing(pos, matrixSizeAir2);
     EntryAiroute* entry = mapAiroute->bucketsAir[index];
@@ -463,8 +438,8 @@ static int travel_cost(Coord start, Coord end, HashMapPosition* mapPosition,Hash
         return cachedResult;
     }
 
-    int startIndex = convInd(start, cols);
-    int endIndex = convInd(end, cols);
+    int startIndex = start.x * cols + start.y;
+    int endIndex = end.x * cols + end.y;
 
     float startCostFloat = getPair(mapPosition, start);
     float endCostFloat = getPair(mapPosition, end);
@@ -472,7 +447,6 @@ static int travel_cost(Coord start, Coord end, HashMapPosition* mapPosition,Hash
         return -1;
     }
     Vert *vert = calloc(matrixSize, sizeof(Vert));
-
     for (int i = 0; i < matrixSize; i++) {
         vert[i].dist = INT_MAX;
         vert[i].visited = 0;
@@ -489,25 +463,29 @@ static int travel_cost(Coord start, Coord end, HashMapPosition* mapPosition,Hash
         int index = pop(heap);
         if (vert[index].visited) continue;
         vert[index].visited = 1;
-        Coord currentPos = convCoord(index, cols);
-        if (currentPos.x == end.x && currentPos.y == end.y) {
+        Coord pos = (Coord){index / cols, index % cols};
+        if (pos.x == end.x && pos.y == end.y) {
             result = vert[index].dist;
             break;
         }
         // if (vert[index].dist > distance) continue;
-        float costExit = getPair(mapPosition, currentPos);
+        float costExit = getPair(mapPosition, pos);
         if (costExit == 0.5f || costExit == 0.0f) continue;
 
         int cost = (int)costExit;
 
-        int hexvec[6];
-        int hexnear = hexNear(currentPos, hexvec, rows, cols);
+        static Coord offsetEven[6] = {{+1,0}, {0,-1}, {-1, -1}, {-1,0}, {-1,+1}, {0, +1}};
+        static Coord offsetOdd[6] = {{+1,0}, {+1,-1}, {0, -1}, {-1,0}, {0,+1}, {+1, +1}};
 
-        for (int i = 0; i < hexnear; i++) {
-            int hex = hexvec[i];
+        const Coord* offset = (pos.y % 2 == 0) ? offsetEven : offsetOdd;
+
+        for (int i = 0; i < 6; i++) {
+            int x = pos.x + offset[i].x;
+            int y = pos.y + offset[i].y;
+            if (x < 0 || x >= rows || y < 0 || y >= cols) continue;
+            int hex = x * cols + y;
             if (vert[hex].visited) continue;
-            Coord hexPos = convCoord(hex, cols);
-            float hexCost = getPair(mapPosition, hexPos);
+            float hexCost = getPair(mapPosition, (Coord){x,y});
             if (hexCost == 0.5f) continue;
             int newDist = vert[index].dist + cost;
             // if (newDist > distance) continue;
@@ -518,10 +496,10 @@ static int travel_cost(Coord start, Coord end, HashMapPosition* mapPosition,Hash
             }
         }
 
-        ValueAir* airRoutes = getAirRoutes(mapAiroute, currentPos, matrixSizeAir2);
+        ValueAir* airRoutes = getAirRoutes(mapAiroute, pos, matrixSizeAir2);
         while (airRoutes != NULL) {
             Coord airDest = airRoutes->value1;
-            int dest = convInd(airDest, cols);
+            int dest = airDest.x * cols + airDest.y;
 
             if (!vert[dest].visited) {
                 float destCostFloat = getPair(mapPosition, airDest);
@@ -537,13 +515,11 @@ static int travel_cost(Coord start, Coord end, HashMapPosition* mapPosition,Hash
             airRoutes = airRoutes->next;
         }
     }
-
     if (result == -1) {
         if (vert[endIndex].dist != INT_MAX) {
             result = vert[endIndex].dist;
         }
     }
-
     if (result >= 0) {
         saveCache(mapCache, cacheKey, result, matrixSize2);
     }
